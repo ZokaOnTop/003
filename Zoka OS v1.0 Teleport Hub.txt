@@ -1,0 +1,282 @@
+--[[ 
+    ZOKA OS - TELEPORTE HUB (v1.0 - AUTO-ANIM)
+    Update: Boot with Glitch Animation & Sound Sync
+]]
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
+local CoreGui = game:GetService("CoreGui")
+
+local player = Players.LocalPlayer
+local TOGGLE_KEY = Enum.KeyCode.L
+
+local SOUNDS = {
+    Static = "rbxassetid://140043289814504", 
+    Toggle = "rbxassetid://80099403859001",
+    Action = "rbxassetid://80099403859001",
+    Teleport = "rbxassetid://98334721794130",
+    Delete = "rbxassetid://133006787405429"
+}
+
+if CoreGui:FindFirstChild("ZokaOS_V1") then CoreGui.ZokaOS_V1:Destroy() end
+
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "ZokaOS_V1"
+screenGui.Parent = CoreGui
+screenGui.ResetOnSpawn = false 
+screenGui.IgnoreGuiInset = true 
+
+-----------------------------------------------------------
+-- UTILS
+-----------------------------------------------------------
+local function playSound(id, vol, loop)
+    local s = Instance.new("Sound")
+    s.SoundId = id
+    s.Volume = vol or 0.4
+    s.Looped = loop or false
+    s.Parent = screenGui
+    s:Play()
+    s.Ended:Connect(function() if not s.Looped then s:Destroy() end end)
+    return s
+end
+
+local function applyHackerStyle(obj, strokeColor, transparency)
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 4)
+    corner.Parent = obj
+    local stroke = Instance.new("UIStroke")
+    stroke.Color = strokeColor or Color3.fromRGB(0, 255, 100)
+    stroke.Thickness = 1.2
+    stroke.Transparency = transparency or 0.4
+    stroke.Parent = obj
+    return stroke
+end
+
+-----------------------------------------------------------
+-- UI PRINCIPALE
+-----------------------------------------------------------
+local mainFrame = Instance.new("Frame")
+mainFrame.Size = UDim2.new(0, 380, 0, 420)
+mainFrame.Position = UDim2.new(0.5, -190, 0.4, 0)
+mainFrame.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+mainFrame.Visible = false -- Caché au départ pour l'animation
+mainFrame.Active = true
+mainFrame.Draggable = true
+mainFrame.Parent = screenGui
+applyHackerStyle(mainFrame, Color3.fromRGB(0, 255, 100), 0.1)
+
+local titleLabel = Instance.new("TextLabel")
+titleLabel.Size = UDim2.new(1, 0, 0, 50)
+titleLabel.BackgroundTransparency = 1
+titleLabel.Text = "/// ZOKA_OS_V1 : TELEPORT HUB ///"
+titleLabel.TextColor3 = Color3.fromRGB(0, 255, 100)
+titleLabel.Font = Enum.Font.Code
+titleLabel.TextSize = 18
+titleLabel.Parent = mainFrame
+
+local creditMain = Instance.new("TextLabel")
+creditMain.Size = UDim2.new(1, 0, 0, 25)
+creditMain.Position = UDim2.new(0, 0, 0.91, 0)
+creditMain.BackgroundTransparency = 1
+creditMain.Text = "DEVELOPED BY ZOKA"
+creditMain.TextColor3 = Color3.fromRGB(0, 255, 100)
+creditMain.Font = Enum.Font.Code
+creditMain.TextSize = 14
+creditMain.Parent = mainFrame
+
+local posLabel = Instance.new("TextLabel")
+posLabel.Size = UDim2.new(0.9, 0, 0.12, 0)
+posLabel.Position = UDim2.new(0.05, 0, 0.15, 0)
+posLabel.BackgroundColor3 = Color3.fromRGB(10, 10, 10)
+posLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+posLabel.Font = Enum.Font.Code
+posLabel.TextSize = 14
+posLabel.Parent = mainFrame
+applyHackerStyle(posLabel, Color3.fromRGB(0, 180, 80))
+
+local statusLabel = Instance.new("TextLabel")
+statusLabel.Size = UDim2.new(0.9, 0, 0.08, 0)
+statusLabel.Position = UDim2.new(0.05, 0, 0.30, 0)
+statusLabel.BackgroundTransparency = 1
+statusLabel.Text = "> SYSTEM_ONLINE"
+statusLabel.TextColor3 = Color3.fromRGB(0, 255, 150)
+statusLabel.Font = Enum.Font.Code
+statusLabel.TextSize = 12
+statusLabel.Parent = mainFrame
+
+local function notify(msg)
+    statusLabel.Text = ">> " .. msg
+    statusLabel.TextColor3 = Color3.fromRGB(255, 0, 80)
+    task.delay(1.5, function() 
+        statusLabel.Text = "> SYSTEM_SYNC_OK" 
+        statusLabel.TextColor3 = Color3.fromRGB(0, 255, 150)
+    end)
+end
+
+local function createHackerBtn(name, pos, size, color)
+    local btn = Instance.new("TextButton")
+    btn.Size = size or UDim2.new(0.43, 0, 0.12, 0)
+    btn.Position = pos
+    btn.BackgroundColor3 = Color3.fromRGB(5, 5, 5)
+    btn.Text = "[ " .. name .. " ]"
+    btn.TextColor3 = color or Color3.fromRGB(0, 255, 100)
+    btn.Font = Enum.Font.Code
+    btn.TextSize = 13
+    btn.Parent = mainFrame
+    applyHackerStyle(btn, color or Color3.fromRGB(0, 200, 80))
+    return btn
+end
+
+local copyBtn = createHackerBtn("CAPTURE_COORD", UDim2.new(0.05, 0, 0.42, 0))
+local saveBtn = createHackerBtn("WRITE_HEX", UDim2.new(0.52, 0, 0.42, 0))
+local toggleListBtn = createHackerBtn("DB_ROOT_ACCESS", UDim2.new(0.05, 0, 0.58, 0), UDim2.new(0.9, 0, 0.12, 0), Color3.fromRGB(255, 0, 100))
+
+-----------------------------------------------------------
+-- ENGINE: GLITCH & ANIMATION
+-----------------------------------------------------------
+local uiVisible = false
+local isAnimating = false
+local savedPoints = {}
+
+local function createPopGlitch()
+    local colors = {Color3.fromRGB(255,0,80), Color3.fromRGB(0,255,255), Color3.fromRGB(0,255,100)}
+    local pop = Instance.new("Frame", screenGui)
+    pop.Size = UDim2.new(math.random(0, 1), math.random(50, 400), 0, math.random(1, 5))
+    pop.Position = UDim2.new(math.random(), -200, math.random(), 0)
+    pop.BackgroundColor3 = colors[math.random(1, #colors)]
+    pop.BorderSizePixel = 0
+    pop.ZIndex = 3000
+    task.delay(0.05, function() pop:Destroy() end)
+end
+
+local function intenseGlitch(times)
+    local originalPos = mainFrame.Position
+    playSound(SOUNDS.Static, 0.3)
+    for i = 1, times do
+        createPopGlitch()
+        local x = math.random(-35, 35)
+        local y = math.random(-35, 35)
+        mainFrame.Position = originalPos + UDim2.new(0, x, 0, y)
+        mainFrame.Rotation = math.random(-5, 5)
+        mainFrame.BackgroundColor3 = (i % 2 == 0) and Color3.fromRGB(20, 20, 20) or Color3.fromRGB(0,0,0)
+        task.wait(0.02)
+    end
+    mainFrame.Position = originalPos
+    mainFrame.Rotation = 0
+    mainFrame.BackgroundColor3 = Color3.fromRGB(0,0,0)
+end
+
+local function animateUI(visible)
+    if isAnimating then return end
+    isAnimating = true
+    if visible then
+        playSound(SOUNDS.Toggle, 0.5) -- Son identique à la touche L
+        mainFrame.Visible = true
+        intenseGlitch(15)
+        uiVisible = true
+        notify("ZOKA_OS_READY")
+    else
+        intenseGlitch(8)
+        mainFrame.Visible = false
+        uiVisible = false
+    end
+    isAnimating = false
+end
+
+-----------------------------------------------------------
+-- LOGIQUE DB (TELEPORT SYSTEM)
+-----------------------------------------------------------
+local function updateUIList()
+    local list = mainFrame:FindFirstChild("DataScroll") or Instance.new("ScrollingFrame")
+    if not list.Parent then
+        list.Name = "DataScroll"
+        list.Size = UDim2.new(0, 340, 0, 280)
+        list.Position = UDim2.new(1.05, 10, 0, 0)
+        list.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+        list.Visible = false
+        list.Parent = mainFrame
+        applyHackerStyle(list, Color3.fromRGB(255, 0, 100), 0.3)
+        Instance.new("UIListLayout", list).Padding = UDim.new(0, 10)
+    end
+    for _, v in pairs(list:GetChildren()) do if v:IsA("Frame") then v:Destroy() end end
+    for i, data in pairs(savedPoints) do
+        local row = Instance.new("Frame", list)
+        row.Size = UDim2.new(0.95, 0, 0, 50)
+        row.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+        applyHackerStyle(row, Color3.fromRGB(0, 255, 100), 0.7)
+        local input = Instance.new("TextBox", row)
+        input.Size = UDim2.new(0.5, 0, 1, 0)
+        input.Position = UDim2.new(0.05, 0, 0, 0)
+        input.BackgroundTransparency = 1
+        input.Text = data.name
+        input.TextColor3 = Color3.fromRGB(255, 255, 255)
+        input.Font = Enum.Font.Code
+        input.TextSize = 14
+        input.FocusLost:Connect(function() data.name = input.Text end)
+        
+        local tp = createHackerBtn("JUMP", UDim2.new(0.58, 0, 0.2, 0), UDim2.new(0.18, 0, 0.6, 0))
+        tp.Parent = row
+        tp.MouseButton1Click:Connect(function()
+            if player.Character:FindFirstChild("HumanoidRootPart") then
+                playSound(SOUNDS.Teleport, 0.6)
+                player.Character.HumanoidRootPart.CFrame = CFrame.new(data.pos) + Vector3.new(0,3,0)
+                notify("NODE_REACHED")
+            end
+        end)
+        
+        local del = createHackerBtn("X", UDim2.new(0.78, 0, 0.2, 0), UDim2.new(0.18, 0, 0.6, 0), Color3.fromRGB(255, 0, 80))
+        del.Parent = row
+        del.MouseButton1Click:Connect(function() 
+            playSound(SOUNDS.Delete, 0.6)
+            table.remove(savedPoints, i) 
+            updateUIList() 
+        end)
+    end
+end
+
+copyBtn.MouseButton1Click:Connect(function()
+    local hrp = player.Character:FindFirstChild("HumanoidRootPart")
+    if hrp then
+        if setclipboard then setclipboard(tostring(hrp.Position)) end
+        playSound(SOUNDS.Action)
+        notify("COORDS_SAVED")
+    end
+end)
+
+saveBtn.MouseButton1Click:Connect(function()
+    local hrp = player.Character:FindFirstChild("HumanoidRootPart")
+    if hrp then
+        table.insert(savedPoints, {name = "NODE_" .. #savedPoints + 1, pos = hrp.Position})
+        updateUIList()
+        playSound(SOUNDS.Action)
+        notify("HEX_STORED")
+    end
+end)
+
+toggleListBtn.MouseButton1Click:Connect(function()
+    local list = mainFrame:FindFirstChild("DataScroll")
+    if list then list.Visible = not list.Visible end
+    updateUIList()
+end)
+
+-----------------------------------------------------------
+-- INPUTS & BOOT
+-----------------------------------------------------------
+UserInputService.InputBegan:Connect(function(input, gpe)
+    if not gpe and input.KeyCode == TOGGLE_KEY then animateUI(not uiVisible) end
+end)
+
+RunService.RenderStepped:Connect(function()
+    pcall(function()
+        local hrp = player.Character.HumanoidRootPart
+        posLabel.Text = string.format("[ X:%.2f | Y:%.2f | Z:%.2f ]", hrp.Position.X, hrp.Position.Y, hrp.Position.Z)
+    end)
+end)
+
+-- LANCEMENT AUTOMATIQUE AVEC ANIMATION ET SON
+task.spawn(function()
+    task.wait(0.2)
+    animateUI(true)
+end)
